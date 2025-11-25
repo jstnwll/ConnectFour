@@ -1,86 +1,74 @@
-import pygame
-import sys
 import random
+import sys
+
+import pygame
+import pygame.gfxdraw
 
 # To run: pip install pygame
-# python3 connect_four.py
+# python3 ConnectFour.py
 
-"""
-        Simple computer AI with a three-tier strategy:
 
-        1. WIN: First, the AI checks if it can win in the next move by trying each column
-           and simulating placing its piece there. If any move results in 4-in-a-row,
-           it immediately takes that winning move.
-
-        2. BLOCK: If no winning move exists, the AI checks if the human player can win
-           in their next move. It simulates placing the human's piece in each column
-           and if any would result in a human win, it blocks that move.
-
-        3. RANDOM: If neither winning nor blocking is possible, the AI makes a random
-           move from all available valid columns.
-
-        This creates a basic but effective AI that prevents obvious losses while
-        capitalizing on immediate wins. The AI doesn't look ahead more than one move,
-        making it beatable by more strategic human players.
-
-        Based on the Connect Four game I created, here are the algorithms and AI structures being used:
-        
-1. Rule-Based AI (Expert System)
-The computer AI uses a rule-based approach with a priority hierarchy:
-Rule 1: If winning move exists → take it
-Rule 2: If blocking move needed → take it
-Rule 3: Otherwise → make random valid move
-This is a simple expert system that follows predefined logical rules rather than learning.
-
-2. Game Tree Search (Limited Depth)
-The AI performs a 1-ply lookahead (one move ahead):
-It simulates each possible move by creating temporary board states
-Evaluates each simulated position for win/loss conditions
-This is essentially a minimax algorithm with depth=1
-
-3. Brute Force Search
-For each move decision, the AI:
-Iterates through all 7 possible columns
-For each column, simulates the move
-Checks all winning patterns (horizontal, vertical, diagonal)
-This is a brute force approach that exhaustively checks all possibilities
-
-4. State Space Search
-The AI searches through the game state space:
-Current board state → possible next states → evaluation
-Uses forward simulation to predict outcomes
-Implements immediate reward evaluation (win/lose/draw)
-
-5. Pattern Recognition
-The win detection uses pattern matching:
-Searches for 4-in-a-row patterns in all directions
-Uses template matching for win conditions
-Implements sliding window approach to check sequences
- 
-This is a deterministic, rule-based AI that's essentially a sophisticated "if-then" system with basic game tree search. It's effective for Connect Four's simple rule set but would struggle with more complex games that require deeper strategic thinking.
-"""
-
-# Initialize pygame
 pygame.init()
 
 # Constants
-WINDOW_WIDTH = 700
-WINDOW_HEIGHT = 600
+WINDOW_WIDTH = 880
+WINDOW_HEIGHT = 700
 BOARD_WIDTH = 7
 BOARD_HEIGHT = 6
-CELL_SIZE = 80
-CELL_MARGIN = 5
-BOARD_X_OFFSET = 50
-BOARD_Y_OFFSET = 50
+CELL_SIZE = 84
+CELL_MARGIN = 8
+BOARD_X_OFFSET = 120
+BOARD_Y_OFFSET = 120
 
-# Colors
-BLACK = (0, 0, 0)
-WHITE = (255, 255, 255)
-BLUE = (0, 0, 255)
-RED = (255, 0, 0)
-YELLOW = (255, 255, 0)
-GRAY = (128, 128, 128)
-LIGHT_BLUE = (173, 216, 230)
+# Colors (modern palette)
+BG = (245, 247, 250)
+PANEL = (250, 252, 255)
+ACCENT = (20, 90, 170)  # deep blue
+ACCENT_DARK = (12, 60, 120)
+RED = (233, 78, 80)
+YELLOW = (255, 189, 46)
+HOLE = (230, 235, 240)
+TEXT = (34, 44, 59)
+SUBTEXT = (105, 120, 140)
+SHADOW = (200, 210, 220)
+
+FPS = 60
+
+
+class Button:
+    def __init__(
+        self, x, y, w, h, text, color=ACCENT, hover_color=ACCENT_DARK, radius=12
+    ):
+        self.rect = pygame.Rect(x, y, w, h)
+        self.text = text
+        self.color = color
+        self.base_color = color
+        self.hover_color = hover_color
+        self.radius = radius
+        self.is_hovered = False
+        self.scale = 1.0
+
+    def draw(self, surf, font):
+        # shadow
+        shadow_rect = self.rect.copy()
+        shadow_rect.x += 4
+        shadow_rect.y += 6
+        pygame.draw.rect(surf, SHADOW, shadow_rect, border_radius=self.radius)
+
+        # button
+        color = self.hover_color if self.is_hovered else self.base_color
+        pygame.draw.rect(surf, color, self.rect, border_radius=self.radius)
+
+        # text
+        txt = font.render(self.text, True, (255, 255, 255))
+        txt_rect = txt.get_rect(center=self.rect.center)
+        surf.blit(txt, txt_rect)
+
+    def update(self, mouse_pos):
+        self.is_hovered = self.rect.collidepoint(mouse_pos)
+
+    def is_clicked(self, mouse_pos):
+        return self.rect.collidepoint(mouse_pos)
 
 
 class ConnectFour:
@@ -91,127 +79,289 @@ class ConnectFour:
 
         # Game state
         self.board = [[0 for _ in range(BOARD_WIDTH)] for _ in range(BOARD_HEIGHT)]
-        self.current_player = 1  # 1 for human (red), 2 for computer (yellow)
+        self.current_player = 1  # 1 = red (human), 2 = yellow (computer or P2)
         self.game_over = False
         self.winner = None
+        self.winning_cells = []
         self.hover_column = -1
+        self.game_mode = None  # None menu, 1=pvp,2=rand AI,3=smart AI
+        self.show_menu = True
 
         # Fonts
-        self.font = pygame.font.Font(None, 36)
-        self.large_font = pygame.font.Font(None, 48)
+        self.title_font = pygame.font.SysFont("Segoe UI", 48, bold=True)
+        self.font = pygame.font.SysFont("Segoe UI", 20)
+        self.small_font = pygame.font.SysFont("Segoe UI", 16)
+
+        # Buttons
+        bw = 420
+        bh = 64
+        bx = (WINDOW_WIDTH - bw) // 2
+        self.buttons = [
+            Button(
+                bx,
+                180,
+                bw,
+                bh,
+                "Human vs Human",
+                color=(52, 152, 219),
+                hover_color=(41, 128, 185),
+            ),
+            Button(
+                bx,
+                270,
+                bw,
+                bh,
+                "Human vs Computer (Random)",
+                color=(46, 204, 113),
+                hover_color=(39, 174, 96),
+            ),
+            Button(
+                bx,
+                360,
+                bw,
+                bh,
+                "Human vs Computer (Smart)",
+                color=(241, 196, 15),
+                hover_color=(243, 156, 18),
+            ),
+        ]
+
+        # Small UI buttons
+        self.btn_restart = Button(
+            WINDOW_WIDTH - 180,
+            40,
+            160,
+            44,
+            "Restart",
+            color=(90, 90, 110),
+            hover_color=(60, 60, 80),
+            radius=10,
+        )
+        self.btn_menu = Button(
+            WINDOW_WIDTH - 360,
+            40,
+            160,
+            44,
+            "Menu",
+            color=(90, 90, 110),
+            hover_color=(60, 60, 80),
+            radius=10,
+        )
+
+    # ----------------- Drawing helpers -----------------
+    def draw_background(self):
+        self.screen.fill(BG)
+
+    def draw_menu(self):
+        self.draw_background()
+        title = self.title_font.render("Connect Four", True, TEXT)
+        self.screen.blit(title, (60, 60))
+
+        mouse_pos = pygame.mouse.get_pos()
+        for b in self.buttons:
+            b.update(mouse_pos)
+            b.draw(self.screen, self.font)
 
     def draw_board(self):
-        """Draw the game board"""
-        self.screen.fill(WHITE)
+        self.draw_background()
 
-        # Draw board background
+        # compute board px size BEFORE using the values
+        board_width_px = BOARD_WIDTH * (CELL_SIZE + CELL_MARGIN) - CELL_MARGIN
+        board_height_px = BOARD_HEIGHT * (CELL_SIZE + CELL_MARGIN) - CELL_MARGIN
+
+        # -------- Top Status Bar --------
+        status_bar = pygame.Rect(BOARD_X_OFFSET - 10, 40, board_width_px + 20, 60)
+        pygame.draw.rect(self.screen, PANEL, status_bar, border_radius=12)
+
+        if not self.game_over:
+            if self.current_player == 1:
+                status = "Your turn — Red"
+                status_col = RED
+            else:
+                status = "Yellow's turn"
+                status_col = YELLOW
+        else:
+            if self.winner == 1:
+                status = "Red Wins!"
+                status_col = RED
+            elif self.winner == 2:
+                status = "Yellow Wins!"
+                status_col = YELLOW
+            else:
+                status = "Draw"
+                status_col = SUBTEXT
+
+        status_txt = self.font.render(status, True, status_col)
+        self.screen.blit(status_txt, (status_bar.x + 18, status_bar.y + 18))
+
+        # Move Restart/Menu small buttons next to the bar
+        mouse_pos = pygame.mouse.get_pos()
+        self.btn_restart.rect.topleft = (status_bar.right - 340, 46)
+        self.btn_menu.rect.topleft = (status_bar.right - 160, 46)
+
+        self.btn_restart.update(mouse_pos)
+        self.btn_menu.update(mouse_pos)
+        self.btn_restart.draw(self.screen, self.font)
+        self.btn_menu.draw(self.screen, self.font)
+
+        # Left panel: board area with subtle shadow and rounded corners
+        board_width_px = BOARD_WIDTH * (CELL_SIZE + CELL_MARGIN) - CELL_MARGIN
+        board_height_px = BOARD_HEIGHT * (CELL_SIZE + CELL_MARGIN) - CELL_MARGIN
         board_rect = pygame.Rect(
-            BOARD_X_OFFSET - CELL_MARGIN,
-            BOARD_Y_OFFSET - CELL_MARGIN,
-            BOARD_WIDTH * (CELL_SIZE + CELL_MARGIN) + CELL_MARGIN,
-            BOARD_HEIGHT * (CELL_SIZE + CELL_MARGIN) + CELL_MARGIN,
+            BOARD_X_OFFSET - 12,
+            BOARD_Y_OFFSET - 12,
+            board_width_px + 24,
+            board_height_px + 24,
         )
-        pygame.draw.rect(self.screen, BLUE, board_rect)
+        pygame.draw.rect(self.screen, SHADOW, board_rect, border_radius=20)
+        inner_rect = pygame.Rect(
+            BOARD_X_OFFSET - 8,
+            BOARD_Y_OFFSET - 8,
+            board_width_px + 16,
+            board_height_px + 16,
+        )
+        pygame.draw.rect(self.screen, ACCENT, inner_rect, border_radius=18)
 
-        # Draw cells and pieces
+        # Draw holes and pieces
+        self.winning_cells = (
+            self.find_winning_cells() if self.game_over and self.winner else []
+        )
         for row in range(BOARD_HEIGHT):
             for col in range(BOARD_WIDTH):
                 x = BOARD_X_OFFSET + col * (CELL_SIZE + CELL_MARGIN)
                 y = BOARD_Y_OFFSET + row * (CELL_SIZE + CELL_MARGIN)
 
-                # Draw cell background (hole)
-                cell_rect = pygame.Rect(x, y, CELL_SIZE, CELL_SIZE)
-                pygame.draw.rect(self.screen, BLACK, cell_rect)
-                pygame.draw.circle(
+                # hole background
+                hole_center = (x + CELL_SIZE // 2, y + CELL_SIZE // 2)
+                radius = CELL_SIZE // 2 - 6
+                # draw outer darker ring for depth
+                pygame.gfxdraw.filled_circle(
                     self.screen,
-                    WHITE,
-                    (x + CELL_SIZE // 2, y + CELL_SIZE // 2),
-                    CELL_SIZE // 2 - 2,
+                    hole_center[0],
+                    hole_center[1],
+                    radius + 4,
+                    (18, 46, 92),
+                )
+                pygame.gfxdraw.filled_circle(
+                    self.screen, hole_center[0], hole_center[1], radius + 2, ACCENT
+                )
+                pygame.gfxdraw.filled_circle(
+                    self.screen, hole_center[0], hole_center[1], radius, HOLE
                 )
 
-                # Draw piece if present
-                if self.board[row][col] == 1:  # Human player (red)
-                    pygame.draw.circle(
-                        self.screen,
-                        RED,
-                        (x + CELL_SIZE // 2, y + CELL_SIZE // 2),
-                        CELL_SIZE // 2 - 5,
-                    )
-                elif self.board[row][col] == 2:  # Computer player (yellow)
-                    pygame.draw.circle(
-                        self.screen,
-                        YELLOW,
-                        (x + CELL_SIZE // 2, y + CELL_SIZE // 2),
-                        CELL_SIZE // 2 - 5,
-                    )
+                piece = self.board[row][col]
+                if piece != 0:
+                    color = RED if piece == 1 else YELLOW
+                    # highlight winning pieces
+                    if (row, col) in self.winning_cells:
+                        glow_color = (255, 255, 255)
+                        pygame.gfxdraw.filled_circle(
+                            self.screen,
+                            hole_center[0],
+                            hole_center[1],
+                            radius - 6,
+                            glow_color,
+                        )
+                        pygame.gfxdraw.filled_circle(
+                            self.screen,
+                            hole_center[0],
+                            hole_center[1],
+                            radius - 8,
+                            color,
+                        )
+                    else:
+                        pygame.gfxdraw.filled_circle(
+                            self.screen,
+                            hole_center[0],
+                            hole_center[1],
+                            radius - 6,
+                            color,
+                        )
+                        pygame.gfxdraw.aacircle(
+                            self.screen,
+                            hole_center[0],
+                            hole_center[1],
+                            radius - 6,
+                            (30, 30, 30),
+                        )
 
-        # Draw hover effect
-        if self.hover_column != -1 and not self.game_over and self.current_player == 1:
-            hover_x = BOARD_X_OFFSET + self.hover_column * (CELL_SIZE + CELL_MARGIN)
-            hover_y = 20
-            pygame.draw.circle(
-                self.screen,
-                RED,
-                (hover_x + CELL_SIZE // 2, hover_y + CELL_SIZE // 2),
-                CELL_SIZE // 2 - 5,
-            )
+        # hover preview
+        if self.hover_column != -1 and not self.game_over:
+            if self.current_player == 1 or (
+                self.game_mode == 1 and self.current_player == 2
+            ):
+                col = self.hover_column
+                # find topmost empty row for preview
+                for r in range(BOARD_HEIGHT):
+                    if self.board[r][col] != 0:
+                        preview_row = r - 1
+                        break
+                else:
+                    preview_row = BOARD_HEIGHT - 1
+                if preview_row >= 0:
+                    x = BOARD_X_OFFSET + col * (CELL_SIZE + CELL_MARGIN)
+                    y = BOARD_Y_OFFSET + preview_row * (CELL_SIZE + CELL_MARGIN)
+                    center = (x + CELL_SIZE // 2, y + CELL_SIZE // 2)
+                    color = RED if self.current_player == 1 else YELLOW
+                    # translucent
+                    surf = pygame.Surface((CELL_SIZE, CELL_SIZE), pygame.SRCALPHA)
+                    pygame.gfxdraw.filled_circle(
+                        surf,
+                        CELL_SIZE // 2,
+                        CELL_SIZE // 2,
+                        CELL_SIZE // 2 - 10,
+                        (*color, 180),
+                    )
+                    self.screen.blit(surf, (x, y))
 
-    def draw_ui(self):
-        """Draw UI elements like current player and instructions"""
-        # Current player indicator
+        # status text
+        status = ""
         if not self.game_over:
             if self.current_player == 1:
-                player_text = "Your Turn (Red)"
-                color = RED
+                status = "Your turn — Red"
+                status_col = RED
             else:
-                player_text = "Computer's Turn (Yellow)"
-                color = YELLOW
+                status = "Yellow's turn"
+                status_col = YELLOW
         else:
             if self.winner == 1:
-                player_text = "You Win!"
-                color = RED
+                status = "Red Wins!"
+                status_col = RED
             elif self.winner == 2:
-                player_text = "Computer Wins!"
-                color = YELLOW
+                status = "Yellow Wins!"
+                status_col = YELLOW
             else:
-                player_text = "It's a Tie!"
-                color = GRAY
+                status = "Draw"
+                status_col = SUBTEXT
 
-        text_surface = self.font.render(player_text, True, color)
-        self.screen.blit(text_surface, (10, 10))
+        status_txt = self.font.render(status, True, status_col)
 
-        # Instructions
-        if not self.game_over and self.current_player == 1:
-            instructions = "Click on a column to place your piece"
-            inst_text = pygame.font.Font(None, 24).render(instructions, True, BLACK)
-            self.screen.blit(inst_text, (10, WINDOW_HEIGHT - 30))
+        # instructions
+        inst = self.small_font.render(
+            "Click a column to drop a piece. M = Menu, R = Restart", True, SUBTEXT
+        )
 
-        # Restart button
-        restart_text = "Press R to Restart"
-        restart_surface = pygame.font.Font(None, 24).render(restart_text, True, BLACK)
-        self.screen.blit(restart_surface, (WINDOW_WIDTH - 150, WINDOW_HEIGHT - 30))
+        # big Restart/Menu buttons
+        mouse_pos = pygame.mouse.get_pos()
 
+    # ----------------- Game logic helpers -----------------
     def get_column_from_pos(self, pos):
-        """Convert mouse position to column index"""
         x, y = pos
-        if BOARD_X_OFFSET <= x <= BOARD_X_OFFSET + BOARD_WIDTH * (
-            CELL_SIZE + CELL_MARGIN
-        ) and BOARD_Y_OFFSET <= y <= BOARD_Y_OFFSET + BOARD_HEIGHT * (
-            CELL_SIZE + CELL_MARGIN
+        board_px_w = BOARD_WIDTH * (CELL_SIZE + CELL_MARGIN) - CELL_MARGIN
+        board_px_h = BOARD_HEIGHT * (CELL_SIZE + CELL_MARGIN) - CELL_MARGIN
+        if (
+            BOARD_X_OFFSET <= x <= BOARD_X_OFFSET + board_px_w
+            and BOARD_Y_OFFSET <= y <= BOARD_Y_OFFSET + board_px_h
         ):
             return (x - BOARD_X_OFFSET) // (CELL_SIZE + CELL_MARGIN)
         return -1
 
     def is_valid_move(self, col):
-        """Check if a move is valid"""
         return 0 <= col < BOARD_WIDTH and self.board[0][col] == 0
 
     def make_move(self, col):
-        """Make a move in the specified column"""
         if not self.is_valid_move(col):
             return False
-
-        # Find the lowest empty row in the column
         for row in range(BOARD_HEIGHT - 1, -1, -1):
             if self.board[row][col] == 0:
                 self.board[row][col] = self.current_player
@@ -219,218 +369,293 @@ class ConnectFour:
         return False
 
     def check_winner(self):
-        """Check if there's a winner"""
-        # Check horizontal
-        for row in range(BOARD_HEIGHT):
-            for col in range(BOARD_WIDTH - 3):
+        # return 1 or 2 if winner else None
+        # horizontal
+        for r in range(BOARD_HEIGHT):
+            for c in range(BOARD_WIDTH - 3):
+                v = self.board[r][c]
                 if (
-                    self.board[row][col] != 0
-                    and self.board[row][col]
-                    == self.board[row][col + 1]
-                    == self.board[row][col + 2]
-                    == self.board[row][col + 3]
+                    v != 0
+                    and v
+                    == self.board[r][c + 1]
+                    == self.board[r][c + 2]
+                    == self.board[r][c + 3]
                 ):
-                    return self.board[row][col]
-
-        # Check vertical
-        for row in range(BOARD_HEIGHT - 3):
-            for col in range(BOARD_WIDTH):
+                    return v
+        # vertical
+        for r in range(BOARD_HEIGHT - 3):
+            for c in range(BOARD_WIDTH):
+                v = self.board[r][c]
                 if (
-                    self.board[row][col] != 0
-                    and self.board[row][col]
-                    == self.board[row + 1][col]
-                    == self.board[row + 2][col]
-                    == self.board[row + 3][col]
+                    v != 0
+                    and v
+                    == self.board[r + 1][c]
+                    == self.board[r + 2][c]
+                    == self.board[r + 3][c]
                 ):
-                    return self.board[row][col]
-
-        # Check diagonal (top-left to bottom-right)
-        for row in range(BOARD_HEIGHT - 3):
-            for col in range(BOARD_WIDTH - 3):
+                    return v
+        # diag TL-BR
+        for r in range(BOARD_HEIGHT - 3):
+            for c in range(BOARD_WIDTH - 3):
+                v = self.board[r][c]
                 if (
-                    self.board[row][col] != 0
-                    and self.board[row][col]
-                    == self.board[row + 1][col + 1]
-                    == self.board[row + 2][col + 2]
-                    == self.board[row + 3][col + 3]
+                    v != 0
+                    and v
+                    == self.board[r + 1][c + 1]
+                    == self.board[r + 2][c + 2]
+                    == self.board[r + 3][c + 3]
                 ):
-                    return self.board[row][col]
-
-        # Check diagonal (top-right to bottom-left)
-        for row in range(BOARD_HEIGHT - 3):
-            for col in range(3, BOARD_WIDTH):
+                    return v
+        # diag TR-BL
+        for r in range(BOARD_HEIGHT - 3):
+            for c in range(3, BOARD_WIDTH):
+                v = self.board[r][c]
                 if (
-                    self.board[row][col] != 0
-                    and self.board[row][col]
-                    == self.board[row + 1][col - 1]
-                    == self.board[row + 2][col - 2]
-                    == self.board[row + 3][col - 3]
+                    v != 0
+                    and v
+                    == self.board[r + 1][c - 1]
+                    == self.board[r + 2][c - 2]
+                    == self.board[r + 3][c - 3]
                 ):
-                    return self.board[row][col]
-
+                    return v
         return None
 
+    def find_winning_cells(self):
+        cells = []
+        # horizontal
+        for r in range(BOARD_HEIGHT):
+            for c in range(BOARD_WIDTH - 3):
+                v = self.board[r][c]
+                if (
+                    v != 0
+                    and v
+                    == self.board[r][c + 1]
+                    == self.board[r][c + 2]
+                    == self.board[r][c + 3]
+                ):
+                    cells = [(r, c + i) for i in range(4)]
+                    return cells
+        # vertical
+        for r in range(BOARD_HEIGHT - 3):
+            for c in range(BOARD_WIDTH):
+                v = self.board[r][c]
+                if (
+                    v != 0
+                    and v
+                    == self.board[r + 1][c]
+                    == self.board[r + 2][c]
+                    == self.board[r + 3][c]
+                ):
+                    cells = [(r + i, c) for i in range(4)]
+                    return cells
+        # diag TL-BR
+        for r in range(BOARD_HEIGHT - 3):
+            for c in range(BOARD_WIDTH - 3):
+                v = self.board[r][c]
+                if (
+                    v != 0
+                    and v
+                    == self.board[r + 1][c + 1]
+                    == self.board[r + 2][c + 2]
+                    == self.board[r + 3][c + 3]
+                ):
+                    cells = [(r + i, c + i) for i in range(4)]
+                    return cells
+        # diag TR-BL
+        for r in range(BOARD_HEIGHT - 3):
+            for c in range(3, BOARD_WIDTH):
+                v = self.board[r][c]
+                if (
+                    v != 0
+                    and v
+                    == self.board[r + 1][c - 1]
+                    == self.board[r + 2][c - 2]
+                    == self.board[r + 3][c - 3]
+                ):
+                    cells = [(r + i, c - i) for i in range(4)]
+                    return cells
+        return cells
+
     def is_board_full(self):
-        """Check if the board is full"""
-        return all(self.board[0][col] != 0 for col in range(BOARD_WIDTH))
+        return all(self.board[0][c] != 0 for c in range(BOARD_WIDTH))
 
     def computer_move(self):
-
-        # First, try to win
-        for col in range(BOARD_WIDTH):
-            if self.is_valid_move(col):
-                # Simulate the move
-                temp_board = [row[:] for row in self.board]
-                for row in range(BOARD_HEIGHT - 1, -1, -1):
-                    if temp_board[row][col] == 0:
-                        temp_board[row][col] = 2
-                        break
-
-                # Check if this move would win
-                if self.check_win_for_board(temp_board, 2):
-                    return col
-
-        # Then, try to block player
-        for col in range(BOARD_WIDTH):
-            if self.is_valid_move(col):
-                # Simulate the move
-                temp_board = [row[:] for row in self.board]
-                for row in range(BOARD_HEIGHT - 1, -1, -1):
-                    if temp_board[row][col] == 0:
-                        temp_board[row][col] = 1
-                        break
-
-                # Check if this move would make player win
-                if self.check_win_for_board(temp_board, 1):
-                    return col
-
-        # Otherwise, make a random valid move
-        valid_moves = [col for col in range(BOARD_WIDTH) if self.is_valid_move(col)]
-        return random.choice(valid_moves) if valid_moves else -1
+        if self.game_mode == 2:
+            valid = [c for c in range(BOARD_WIDTH) if self.is_valid_move(c)]
+            return random.choice(valid) if valid else -1
+        else:
+            # smart: win -> block -> random
+            for c in range(BOARD_WIDTH):
+                if self.is_valid_move(c):
+                    tb = [r[:] for r in self.board]
+                    for r in range(BOARD_HEIGHT - 1, -1, -1):
+                        if tb[r][c] == 0:
+                            tb[r][c] = 2
+                            break
+                    if self.check_win_for_board(tb, 2):
+                        return c
+            for c in range(BOARD_WIDTH):
+                if self.is_valid_move(c):
+                    tb = [r[:] for r in self.board]
+                    for r in range(BOARD_HEIGHT - 1, -1, -1):
+                        if tb[r][c] == 0:
+                            tb[r][c] = 1
+                            break
+                    if self.check_win_for_board(tb, 1):
+                        return c
+            valid = [c for c in range(BOARD_WIDTH) if self.is_valid_move(c)]
+            return random.choice(valid) if valid else -1
 
     def check_win_for_board(self, board, player):
-        """Check if a specific player would win on a given board state"""
-        # Check horizontal
-        for row in range(BOARD_HEIGHT):
-            for col in range(BOARD_WIDTH - 3):
+        # identical checks but for arbitrary board
+        for r in range(BOARD_HEIGHT):
+            for c in range(BOARD_WIDTH - 3):
                 if (
-                    board[row][col] == player
-                    and board[row][col]
-                    == board[row][col + 1]
-                    == board[row][col + 2]
-                    == board[row][col + 3]
+                    board[r][c] == player
+                    and board[r][c + 1] == player
+                    and board[r][c + 2] == player
+                    and board[r][c + 3] == player
                 ):
                     return True
-
-        # Check vertical
-        for row in range(BOARD_HEIGHT - 3):
-            for col in range(BOARD_WIDTH):
+        for r in range(BOARD_HEIGHT - 3):
+            for c in range(BOARD_WIDTH):
                 if (
-                    board[row][col] == player
-                    and board[row][col]
-                    == board[row + 1][col]
-                    == board[row + 2][col]
-                    == board[row + 3][col]
+                    board[r][c] == player
+                    and board[r + 1][c] == player
+                    and board[r + 2][c] == player
+                    and board[r + 3][c] == player
                 ):
                     return True
-
-        # Check diagonal (top-left to bottom-right)
-        for row in range(BOARD_HEIGHT - 3):
-            for col in range(BOARD_WIDTH - 3):
+        for r in range(BOARD_HEIGHT - 3):
+            for c in range(BOARD_WIDTH - 3):
                 if (
-                    board[row][col] == player
-                    and board[row][col]
-                    == board[row + 1][col + 1]
-                    == board[row + 2][col + 2]
-                    == board[row + 3][col + 3]
+                    board[r][c] == player
+                    and board[r + 1][c + 1] == player
+                    and board[r + 2][c + 2] == player
+                    and board[r + 3][c + 3] == player
                 ):
                     return True
-
-        # Check diagonal (top-right to bottom-left)
-        for row in range(BOARD_HEIGHT - 3):
-            for col in range(3, BOARD_WIDTH):
+        for r in range(BOARD_HEIGHT - 3):
+            for c in range(3, BOARD_WIDTH):
                 if (
-                    board[row][col] == player
-                    and board[row][col]
-                    == board[row + 1][col - 1]
-                    == board[row + 2][col - 2]
-                    == board[row + 3][col - 3]
+                    board[r][c] == player
+                    and board[r + 1][c - 1] == player
+                    and board[r + 2][c - 2] == player
+                    and board[r + 3][c - 3] == player
                 ):
                     return True
-
         return False
 
     def restart_game(self):
-        """Restart the game"""
         self.board = [[0 for _ in range(BOARD_WIDTH)] for _ in range(BOARD_HEIGHT)]
         self.current_player = 1
         self.game_over = False
         self.winner = None
+        self.winning_cells = []
         self.hover_column = -1
 
+    def go_to_menu(self):
+        self.show_menu = True
+        self.game_mode = None
+        self.restart_game()
+
     def handle_events(self):
-        """Handle pygame events"""
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 return False
-
             elif event.type == pygame.KEYDOWN:
-                if event.key == pygame.K_r:
+                if event.key == pygame.K_m:
+                    self.go_to_menu()
+                elif event.key == pygame.K_r and self.game_over:
                     self.restart_game()
-
             elif event.type == pygame.MOUSEMOTION:
-                if not self.game_over and self.current_player == 1:
-                    self.hover_column = self.get_column_from_pos(event.pos)
+                if not self.show_menu:
+                    if not self.game_over and (
+                        self.current_player == 1
+                        or (self.game_mode == 1 and self.current_player == 2)
+                    ):
+                        self.hover_column = self.get_column_from_pos(event.pos)
+                    else:
+                        self.hover_column = -1
                 else:
-                    self.hover_column = -1
-
+                    for b in self.buttons:
+                        b.update(event.pos)
             elif event.type == pygame.MOUSEBUTTONDOWN:
-                if (
-                    event.button == 1
-                    and not self.game_over
-                    and self.current_player == 1
-                ):
-                    col = self.get_column_from_pos(event.pos)
-                    if self.make_move(col):
-                        # Check for win or draw
-                        winner = self.check_winner()
-                        if winner:
-                            self.winner = winner
-                            self.game_over = True
-                        elif self.is_board_full():
-                            self.game_over = True
-                        else:
-                            self.current_player = 2  # Switch to computer
+                if self.show_menu:
+                    for i, b in enumerate(self.buttons):
+                        if b.is_clicked(event.pos):
+                            self.game_mode = i + 1
+                            self.show_menu = False
+                            self.restart_game()
+                else:
+                    # UI buttons
+                    if self.btn_restart.is_clicked(event.pos):
+                        self.restart_game()
+                    if self.btn_menu.is_clicked(event.pos):
+                        self.go_to_menu()
 
-                            # Computer makes move after a short delay
-                            pygame.time.wait(500)  # Small delay for better UX
-                            computer_col = self.computer_move()
-                            if computer_col != -1:
-                                self.make_move(computer_col)
-                                # Check for win or draw
-                                winner = self.check_winner()
-                                if winner:
-                                    self.winner = winner
-                                    self.game_over = True
-                                elif self.is_board_full():
-                                    self.game_over = True
-                                else:
-                                    self.current_player = 1  # Switch back to human
-
+                    # board clicks
+                    if (
+                        event.button == 1
+                        and not self.game_over
+                        and (
+                            self.current_player == 1
+                            or (self.game_mode == 1 and self.current_player == 2)
+                        )
+                    ):
+                        col = self.get_column_from_pos(event.pos)
+                        if col != -1 and self.make_move(col):
+                            winner = self.check_winner()
+                            if winner:
+                                self.winner = winner
+                                self.game_over = True
+                            elif self.is_board_full():
+                                self.game_over = True
+                            else:
+                                self.current_player = (
+                                    2 if self.current_player == 1 else 1
+                                )
+                                # computer move
+                                if (
+                                    self.game_mode != 1
+                                    and not self.game_over
+                                    and self.current_player == 2
+                                ):
+                                    pygame.time.wait(350)
+                                    c = self.computer_move()
+                                    if c != -1:
+                                        self.make_move(c)
+                                        winner = self.check_winner()
+                                        if winner:
+                                            self.winner = winner
+                                            self.game_over = True
+                                        elif self.is_board_full():
+                                            self.game_over = True
+                                        else:
+                                            self.current_player = 1
         return True
 
+    def get_column_from_pos(self, pos):
+        x, y = pos
+        board_px_w = BOARD_WIDTH * (CELL_SIZE + CELL_MARGIN) - CELL_MARGIN
+        board_px_h = BOARD_HEIGHT * (CELL_SIZE + CELL_MARGIN) - CELL_MARGIN
+        if (
+            BOARD_X_OFFSET <= x <= BOARD_X_OFFSET + board_px_w
+            and BOARD_Y_OFFSET <= y <= BOARD_Y_OFFSET + board_px_h
+        ):
+            return int((x - BOARD_X_OFFSET) // (CELL_SIZE + CELL_MARGIN))
+        return -1
+
     def run(self):
-        """Main game loop"""
         running = True
         while running:
             running = self.handle_events()
-
-            self.draw_board()
-            self.draw_ui()
-
+            if self.show_menu:
+                self.draw_menu()
+            else:
+                self.draw_board()
             pygame.display.flip()
-            self.clock.tick(60)
-
+            self.clock.tick(FPS)
         pygame.quit()
         sys.exit()
 
