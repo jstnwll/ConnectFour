@@ -1,9 +1,10 @@
+import math
 import random
 import sys
+
 import numpy as np
 import pygame
 import pygame.gfxdraw
-import math
 
 # To run: pip install pygame
 # python3 ConnectFour.py
@@ -49,6 +50,7 @@ CENTER_PREFERENCE = {3: 0.3, 2: 0.15, 1: 0.1, 4: 0.2, 5: 0.2, 0: 0.1, 6: 0.1}
 
 class Button:
     """Interactive button with hover effects and visual feedback."""
+
     def __init__(
         self, x, y, w, h, text, color=ACCENT, hover_color=ACCENT_DARK, radius=12
     ):
@@ -66,7 +68,7 @@ class Button:
         """Draw button with shadow and hover state."""
         # animate scale
         self.scale += (self.target_scale - self.scale) * 0.2
-        
+
         # scale rect for drawing
         w = int(self.rect.width * self.scale)
         h = int(self.rect.height * self.scale)
@@ -102,13 +104,14 @@ class Button:
 
 class ConnectFour:
     """Main game controller for Connect Four gameplay and rendering."""
+
     def __init__(self):
         self.screen = pygame.display.set_mode((WINDOW_WIDTH, WINDOW_HEIGHT))
         pygame.display.set_caption("Connect Four")
         self.clock = pygame.time.Clock()
 
         # Game state
-        flipped_board = np.zeros((BOARD_HEIGHT,BOARD_WIDTH))
+        flipped_board = np.zeros((BOARD_HEIGHT, BOARD_WIDTH))
         self.minimax_board = np.flip(flipped_board)
         self.board = [[0 for _ in range(BOARD_WIDTH)] for _ in range(BOARD_HEIGHT)]
         self.current_player = 1  # 1 = red (human), 2 = yellow (computer or P2)
@@ -117,9 +120,9 @@ class ConnectFour:
         self.hover_column = -1
         self.game_mode = None  # None=menu, 1=pvp, 2=rand AI, 3=smart AI
         self.phase = PHASE_MENU
-        
+
         # Animation state
-        self.anim_piece = None # {col, row, y, target_y, player, velocity}
+        self.anim_piece = None  # {col, row, y, target_y, player, velocity}
         self.ai_timer = 0
 
         # Fonts
@@ -155,7 +158,7 @@ class ConnectFour:
                 400,
                 bw,
                 bh,
-                "Human vs Computer (Smart)",
+                "Human vs Computer (Rule-Based)",
                 color=(241, 196, 15),
                 hover_color=(243, 156, 18),
             ),
@@ -167,7 +170,7 @@ class ConnectFour:
                 "Human vs Computer (MinMax)",
                 color=(241, 196, 15),
                 hover_color=(243, 156, 18),
-            )
+            ),
         ]
 
         # Small UI buttons
@@ -202,23 +205,25 @@ class ConnectFour:
             r = int(BG_TOP[0] * (1 - alpha) + BG_BOTTOM[0] * alpha)
             g = int(BG_TOP[1] * (1 - alpha) + BG_BOTTOM[1] * alpha)
             b = int(BG_TOP[2] * (1 - alpha) + BG_BOTTOM[2] * alpha)
-            pygame.draw.rect(self.screen, (r,g,b), (0, y, WINDOW_WIDTH, step))
+            pygame.draw.rect(self.screen, (r, g, b), (0, y, WINDOW_WIDTH, step))
 
     def draw_menu(self):
         """Render main menu with game mode selection."""
         self.draw_background()
-        
+
         # Decorative circles
         pygame.gfxdraw.filled_circle(self.screen, 100, 100, 40, (*RED, 100))
-        pygame.gfxdraw.filled_circle(self.screen, WINDOW_WIDTH-80, WINDOW_HEIGHT-80, 60, (*YELLOW, 100))
-        
+        pygame.gfxdraw.filled_circle(
+            self.screen, WINDOW_WIDTH - 80, WINDOW_HEIGHT - 80, 60, (*YELLOW, 100)
+        )
+
         # Title with shadow
         title_txt = "Connect Four"
         title_surf = self.title_font.render(title_txt, True, TEXT)
-        title_rect = title_surf.get_rect(center=(WINDOW_WIDTH//2, 120))
-        
+        title_rect = title_surf.get_rect(center=(WINDOW_WIDTH // 2, 120))
+
         # Shadow
-        s_surf = self.title_font.render(title_txt, True, (0,0,0))
+        s_surf = self.title_font.render(title_txt, True, (0, 0, 0))
         s_surf.set_alpha(30)
         self.screen.blit(s_surf, (title_rect.x + 4, title_rect.y + 4))
         self.screen.blit(title_surf, title_rect)
@@ -239,11 +244,11 @@ class ConnectFour:
         # -------- Top Status Bar --------
         status_bar = pygame.Rect(BOARD_X_OFFSET - 10, 40, board_width_px + 20, 60)
         pygame.draw.rect(self.screen, PANEL, status_bar, border_radius=12)
-        
+
         # Status Text
         status = ""
         status_col = TEXT
-        
+
         if self.phase == PHASE_GAME_OVER:
             if self.winner == 1:
                 status = "Red Wins!"
@@ -284,19 +289,23 @@ class ConnectFour:
             board_width_px + 24,
             board_height_px + 24,
         )
-        
+
         # Board Shadow
         shadow_rect = board_rect.copy()
         shadow_rect.y += 8
-        s_surf = pygame.Surface((shadow_rect.width, shadow_rect.height), pygame.SRCALPHA)
+        s_surf = pygame.Surface(
+            (shadow_rect.width, shadow_rect.height), pygame.SRCALPHA
+        )
         pygame.draw.rect(s_surf, SHADOW, s_surf.get_rect(), border_radius=20)
         self.screen.blit(s_surf, shadow_rect)
 
         # Board Body
         pygame.draw.rect(self.screen, ACCENT, board_rect, border_radius=20)
-        
+
         # Highlight
-        pygame.draw.rect(self.screen, (255,255,255,30), board_rect, width=2, border_radius=20)
+        pygame.draw.rect(
+            self.screen, (255, 255, 255, 30), board_rect, width=2, border_radius=20
+        )
 
         # Draw Cells
         for row in range(BOARD_HEIGHT):
@@ -307,37 +316,58 @@ class ConnectFour:
                 radius = CELL_SIZE // 2 - 6
 
                 # Hole background (darker blue/shadow)
-                pygame.gfxdraw.filled_circle(self.screen, center[0], center[1], radius + 2, (10, 50, 100))
-                pygame.gfxdraw.aacircle(self.screen, center[0], center[1], radius + 2, (10, 50, 100))
-                
+                pygame.gfxdraw.filled_circle(
+                    self.screen, center[0], center[1], radius + 2, (10, 50, 100)
+                )
+                pygame.gfxdraw.aacircle(
+                    self.screen, center[0], center[1], radius + 2, (10, 50, 100)
+                )
+
                 # Determine what to draw in the hole
                 piece_val = self.board[row][col]
-                
+
                 # Skip drawing if this is the destination of the currently animating piece
-                if self.anim_piece and self.anim_piece['row'] == row and self.anim_piece['col'] == col:
-                    piece_val = 0 # Treat as empty for drawing, we draw the moving one separately
-                
+                if (
+                    self.anim_piece
+                    and self.anim_piece["row"] == row
+                    and self.anim_piece["col"] == col
+                ):
+                    piece_val = 0  # Treat as empty for drawing, we draw the moving one separately
+
                 if piece_val == 0:
                     # Empty hole
-                    pygame.gfxdraw.filled_circle(self.screen, center[0], center[1], radius, HOLE)
+                    pygame.gfxdraw.filled_circle(
+                        self.screen, center[0], center[1], radius, HOLE
+                    )
                 else:
                     # Static piece
                     color = RED if piece_val == 1 else YELLOW
                     self._draw_piece(center[0], center[1], radius, color)
-                    
+
                     # Winner glow
-                    if self.phase == PHASE_GAME_OVER and (row, col) in self.winning_cells:
-                        pygame.gfxdraw.filled_circle(self.screen, center[0], center[1], radius, (255, 255, 255, 100))
-                        pygame.draw.circle(self.screen, (255, 255, 255), center, radius, 4)
+                    if (
+                        self.phase == PHASE_GAME_OVER
+                        and (row, col) in self.winning_cells
+                    ):
+                        pygame.gfxdraw.filled_circle(
+                            self.screen,
+                            center[0],
+                            center[1],
+                            radius,
+                            (255, 255, 255, 100),
+                        )
+                        pygame.draw.circle(
+                            self.screen, (255, 255, 255), center, radius, 4
+                        )
 
         # Draw Animating Piece
         if self.anim_piece:
             ap = self.anim_piece
-            x = BOARD_X_OFFSET + ap['col'] * (CELL_SIZE + CELL_MARGIN) + CELL_SIZE // 2
-            y = int(ap['y']) + CELL_SIZE // 2
-            color = RED if ap['player'] == 1 else YELLOW
+            x = BOARD_X_OFFSET + ap["col"] * (CELL_SIZE + CELL_MARGIN) + CELL_SIZE // 2
+            y = int(ap["y"]) + CELL_SIZE // 2
+            color = RED if ap["player"] == 1 else YELLOW
             radius = CELL_SIZE // 2 - 6
-            
+
             # Clip drawing to board area (optional, but good for polish if piece starts high)
             self._draw_piece(x, y, radius, color)
 
@@ -350,18 +380,20 @@ class ConnectFour:
                 if self.board[r][col] == 0:
                     landing_row = r
                     break
-            
+
             if landing_row != -1:
                 x = BOARD_X_OFFSET + col * (CELL_SIZE + CELL_MARGIN)
                 y = BOARD_Y_OFFSET + landing_row * (CELL_SIZE + CELL_MARGIN)
                 center = (x + CELL_SIZE // 2, y + CELL_SIZE // 2)
                 radius = CELL_SIZE // 2 - 6
-                
+
                 color = RED if self.current_player == 1 else YELLOW
-                
+
                 # Semi-transparent ghost
                 s = pygame.Surface((CELL_SIZE, CELL_SIZE), pygame.SRCALPHA)
-                pygame.gfxdraw.filled_circle(s, CELL_SIZE//2, CELL_SIZE//2, radius, (*color, 100))
+                pygame.gfxdraw.filled_circle(
+                    s, CELL_SIZE // 2, CELL_SIZE // 2, radius, (*color, 100)
+                )
                 self.screen.blit(s, (x, y))
 
     def _draw_piece(self, x, y, radius, color):
@@ -369,55 +401,51 @@ class ConnectFour:
         # Main body
         pygame.gfxdraw.filled_circle(self.screen, x, y, radius, color)
         pygame.gfxdraw.aacircle(self.screen, x, y, radius, color)
-        
+
         # Inner detail (bevel/shine)
         highlight = (255, 255, 255, 80)
         shadow = (0, 0, 0, 50)
-        
+
         # Top-left highlight
         pygame.gfxdraw.filled_circle(self.screen, x - 5, y - 5, radius - 10, highlight)
-        # Bottom-right shadow overlay (simulated by drawing smaller circle offset or arc? 
+        # Bottom-right shadow overlay (simulated by drawing smaller circle offset or arc?
         # simple way: smaller circle)
-        
+
         # inner rim
-        pygame.draw.circle(self.screen, (0,0,0,30), (x,y), radius, 2)
+        pygame.draw.circle(self.screen, (0, 0, 0, 30), (x, y), radius, 2)
 
     # ===== LOGIC & ANIMATION =====
 
     """Minimax implementation"""
 
-    #Scoring function
-    def evaluate_window(self,window, piece):
+    # Scoring function
+    def evaluate_window(self, window, piece):
         score = 0
         opp_piece = 1 if piece == 2 else 2
 
-
         if window.count(piece) == 4:
             score += 100
-            
+
         elif window.count(piece) == 3 and window.count(0) == 1:
             score += 5
         elif window.count(piece) == 2 and window.count(0) == 2:
             score += 2
         if window.count(opp_piece) == 3 and window.count(0) == 1:
             score -= 4
-        
 
         return score
-    
-    
-    def minimax(self,board,depth, alpha, beta, maximizingPlayer):
+
+    def minimax(self, board, depth, alpha, beta, maximizingPlayer):
         valid_locations = self.get_valid_locations(board)
         is_terminal = self.is_terminal_node(board)
         if depth == 0 or is_terminal:
             if is_terminal:
-                    
                 if self.check_win_for_board(board, 2):
                     return (None, 1000)
                 elif self.check_win_for_board(board, 1):
                     return (None, -1000)
                 else:
-                    return (None,0)
+                    return (None, 0)
             else:
                 return (None, self.score_position(board, 2))
         if maximizingPlayer:
@@ -427,7 +455,7 @@ class ConnectFour:
                 row = self.get_next_open_row(board, col)
                 board_copy = board.copy()
                 self.drop_piece(board_copy, row, col, 2)
-                new_score = self.minimax(board_copy, depth-1, alpha, beta, False)[1]
+                new_score = self.minimax(board_copy, depth - 1, alpha, beta, False)[1]
 
                 if new_score > value:
                     value = new_score
@@ -438,13 +466,13 @@ class ConnectFour:
 
             return column, value
         else:
-            value= math.inf
+            value = math.inf
             column = random.choice(valid_locations)
             for col in valid_locations:
                 row = self.get_next_open_row(board, col)
                 board_copy = board.copy()
                 self.drop_piece(board_copy, row, col, 1)
-                new_score = self.minimax(board_copy, depth-1, alpha, beta, True)[1]
+                new_score = self.minimax(board_copy, depth - 1, alpha, beta, True)[1]
                 if new_score < value:
                     value = new_score
                     column = col
@@ -452,58 +480,53 @@ class ConnectFour:
                     break
             return column, value
 
-
-
-    def is_terminal_node(self,board):
-        return self.check_win_for_board(board, 1) or self.check_win_for_board(board, 2) or len(self.get_valid_locations(board)) == 0
-       
+    def is_terminal_node(self, board):
+        return (
+            self.check_win_for_board(board, 1)
+            or self.check_win_for_board(board, 2)
+            or len(self.get_valid_locations(board)) == 0
+        )
 
     def is_valid_location(self, board, col):
         return board[0][col] == 0
 
-    
     def drop_piece(self, board, row, col, piece):
         board[row][col] = piece
-
 
     def score_position(self, board, piece):
         score = 0
 
+        # Score center column
 
-        #Score center column
-
-       
-        center_array = [int(i) for i in list(board[:, BOARD_WIDTH//2])]
+        center_array = [int(i) for i in list(board[:, BOARD_WIDTH // 2])]
         center_count = center_array.count(piece)
         score += center_count * 3
 
-         #Horizontal scoring
+        # Horizontal scoring
         for r in range(BOARD_HEIGHT):
-            row_array = [int(i) for i in list(board[r,:])]
-            for c in range(BOARD_WIDTH-3):
-                window = row_array[c:c+4]
+            row_array = [int(i) for i in list(board[r, :])]
+            for c in range(BOARD_WIDTH - 3):
+                window = row_array[c : c + 4]
                 score += self.evaluate_window(window, piece)
-                
-        #Score verticle
+
+        # Score verticle
         for c in range(BOARD_WIDTH):
-            col_array = [int(i) for i in list(board[:,c])]
+            col_array = [int(i) for i in list(board[:, c])]
 
-            for r in range(BOARD_HEIGHT-3):
-                window = col_array[r:r+4]
+            for r in range(BOARD_HEIGHT - 3):
+                window = col_array[r : r + 4]
                 score += self.evaluate_window(window, piece)
-        #Score diagonal
-        for r in range(BOARD_HEIGHT-3):
-            for c in range(BOARD_WIDTH-3):
-                window = [board[r+i][c+i] for i in range(4)]
+        # Score diagonal
+        for r in range(BOARD_HEIGHT - 3):
+            for c in range(BOARD_WIDTH - 3):
+                window = [board[r + i][c + i] for i in range(4)]
                 score += self.evaluate_window(window, piece)
-        for r in range(BOARD_HEIGHT-3):
-            for c in range(BOARD_WIDTH-3):
-                window = [board[r+3-i][c+i] for i in range(4)]
+        for r in range(BOARD_HEIGHT - 3):
+            for c in range(BOARD_WIDTH - 3):
+                window = [board[r + 3 - i][c + i] for i in range(4)]
                 score += self.evaluate_window(window, piece)
 
-        
         return score
-    
 
     def pick_best_move(self, board, piece):
         valid_locations = self.get_valid_locations(board)
@@ -516,46 +539,26 @@ class ConnectFour:
             score = self.score_position(temp_board, piece)
 
             if score > best_score:
-               # print(score, best_score)
+                # print(score, best_score)
                 best_score = score
                 best_col = col
         print(self.minimax_board)
         return best_col
 
-
-
-
-
     def get_valid_locations(self, board):
         valid_location = []
-        for col in range (BOARD_WIDTH):
+        for col in range(BOARD_WIDTH):
             if self.is_valid_location(board, col):
                 valid_location.append(col)
         print(valid_location)
         return valid_location
-    def get_next_open_row(self,board, col):
-        for r in range(BOARD_HEIGHT-1,-1,-1):
+
+    def get_next_open_row(self, board, col):
+        for r in range(BOARD_HEIGHT - 1, -1, -1):
             if board[r][col] == 0:
                 return r
 
-
-    
-
     """End of MiniMax"""
-                    
-                
-        
-
-
-
-
-
-
-
-
-
-
-
 
     def start_move_animation(self, col, player):
         """Initialize animation for a move."""
@@ -565,20 +568,20 @@ class ConnectFour:
             if self.board[r][col] == 0:
                 row = r
                 break
-        
+
         if row == -1:
-            return False # Invalid
-            
+            return False  # Invalid
+
         target_y = BOARD_Y_OFFSET + row * (CELL_SIZE + CELL_MARGIN)
         start_y = BOARD_Y_OFFSET - CELL_SIZE - 20
-        
+
         self.anim_piece = {
-            'col': col,
-            'row': row,
-            'player': player,
-            'y': start_y,
-            'target_y': target_y,
-            'velocity': 0
+            "col": col,
+            "row": row,
+            "player": player,
+            "y": start_y,
+            "target_y": target_y,
+            "velocity": 0,
         }
         self.phase = PHASE_ANIMATING
         return True
@@ -586,20 +589,20 @@ class ConnectFour:
     def update_animation(self):
         """Advance animation frame."""
         if not self.anim_piece:
-            self.phase = PHASE_PLAYER_TURN # Recovery
+            self.phase = PHASE_PLAYER_TURN  # Recovery
             return
 
         # Gravity physics
         gravity = 2.0
-        self.anim_piece['velocity'] += gravity
-        self.anim_piece['y'] += self.anim_piece['velocity']
-        
+        self.anim_piece["velocity"] += gravity
+        self.anim_piece["y"] += self.anim_piece["velocity"]
+
         # Bounce or Stop logic
-        if self.anim_piece['y'] >= self.anim_piece['target_y']:
-            self.anim_piece['y'] = self.anim_piece['target_y']
+        if self.anim_piece["y"] >= self.anim_piece["target_y"]:
+            self.anim_piece["y"] = self.anim_piece["target_y"]
             # Bounce effect?
-            if self.anim_piece['velocity'] > 15:
-                 self.anim_piece['velocity'] = -self.anim_piece['velocity'] * 0.3
+            if self.anim_piece["velocity"] > 15:
+                self.anim_piece["velocity"] = -self.anim_piece["velocity"] * 0.3
             else:
                 # Done
                 self.finalize_move()
@@ -609,8 +612,8 @@ class ConnectFour:
         if not self.anim_piece:
             return
 
-        r, c = self.anim_piece['row'], self.anim_piece['col']
-        p = self.anim_piece['player']
+        r, c = self.anim_piece["row"], self.anim_piece["col"]
+        p = self.anim_piece["player"]
         self.board[r][c] = p
         self.minimax_board[r][c] = p
         self.anim_piece = None
@@ -622,21 +625,21 @@ class ConnectFour:
             self.phase = PHASE_GAME_OVER
             self.winning_cells = self.find_winning_cells()
             return
-            
+
         if self.is_board_full():
             self.phase = PHASE_GAME_OVER
             return
 
         # Switch turn
         self.current_player = 2 if self.current_player == 1 else 1
-        
+
         # Determine next phase
         if self.game_mode == 1:
             self.phase = PHASE_PLAYER_TURN
         else:
             if self.current_player == 2:
                 self.phase = PHASE_AI_THINKING
-                self.ai_timer = pygame.time.get_ticks() + 500 # 500ms think time
+                self.ai_timer = pygame.time.get_ticks() + 500  # 500ms think time
             else:
                 self.phase = PHASE_PLAYER_TURN
 
@@ -655,7 +658,6 @@ class ConnectFour:
 
     # ===== GAME LOGIC METHODS =====
     # ... (Keep helper methods) ...
-
 
     def get_column_from_pos(self, pos):
         """Convert mouse position to board column index."""
@@ -802,7 +804,7 @@ class ConnectFour:
             # Random mode: prefer center with slight weighting
             return self._random_move()
         elif self.game_mode == 4:
-            return self.minimax(self.minimax_board,3, -math.inf, math.inf,True)[0]
+            return self.minimax(self.minimax_board, 3, -math.inf, math.inf, True)[0]
         else:
             # Smart mode: win, block, prefer center, avoid opponent threats
             return self._smart_move()
@@ -831,22 +833,24 @@ class ConnectFour:
             if self.is_valid_move(c):
                 if self._would_win(c, 2):
                     return c
-        
+
         # Priority 2: Block opponent win
         for c in range(BOARD_WIDTH):
             if self.is_valid_move(c):
                 if self._would_win(c, 1):
                     return c
-                    
+
         # Priority 3: Create threat (2 in a row with potential for 3), but ensure safety
         threat_cols = []
         for c in range(BOARD_WIDTH):
             if self.is_valid_move(c):
-                if self._count_consecutive(c, 2) >= 2 and not self._creates_opponent_threat(c):
+                if self._count_consecutive(
+                    c, 2
+                ) >= 2 and not self._creates_opponent_threat(c):
                     threat_cols.append(c)
         if threat_cols:
             return self._prefer_center(threat_cols)
-            
+
         # Priority 4: Avoid giving opponent easy wins, prefer center
         safe_cols = []
         for c in range(BOARD_WIDTH):
@@ -855,7 +859,7 @@ class ConnectFour:
                     safe_cols.append(c)
         if safe_cols:
             return self._prefer_center(safe_cols)
-            
+
         # Fallback: prefer center among valid moves (even if unsafe, since we must move)
         valid = [c for c in range(BOARD_WIDTH) if self.is_valid_move(c)]
         return self._prefer_center(valid) if valid else -1
@@ -885,7 +889,11 @@ class ConnectFour:
                     for dr, dc in [(0, 1), (1, 0), (1, 1), (1, -1)]:
                         count = 1
                         nr, nc = r + dr, c + dc
-                        while 0 <= nr < BOARD_HEIGHT and 0 <= nc < BOARD_WIDTH and tb[nr][nc] == player:
+                        while (
+                            0 <= nr < BOARD_HEIGHT
+                            and 0 <= nc < BOARD_WIDTH
+                            and tb[nr][nc] == player
+                        ):
                             count += 1
                             nr += dr
                             nc += dc
@@ -900,24 +908,24 @@ class ConnectFour:
             if self.board[r][col] == 0:
                 target_row = r
                 break
-        
+
         if target_row == -1:
-            return False # Should not happen if is_valid_move checked
-            
+            return False  # Should not happen if is_valid_move checked
+
         # If we place at target_row, the cell above (target_row - 1) becomes available.
         # Check if opponent playing at (target_row - 1) would win.
         if target_row > 0:
             # Simulate our move first
             self.board[target_row][col] = 2
-            
+
             # Check opponent win at target_row - 1
             would_loss = self._would_win_on_board_at(target_row - 1, col, 1)
-            
+
             # Undo our move
             self.board[target_row][col] = 0
-            
+
             return would_loss
-            
+
         return False
 
     def _would_win_on_board_at(self, row, col, player):
@@ -976,7 +984,7 @@ class ConnectFour:
     def restart_game(self):
         """Reset board and game state for new game."""
         self.board = [[0 for _ in range(BOARD_WIDTH)] for _ in range(BOARD_HEIGHT)]
-        flipped_board = np.zeros((BOARD_HEIGHT,BOARD_WIDTH))
+        flipped_board = np.zeros((BOARD_HEIGHT, BOARD_WIDTH))
         self.minimax_board = np.flip(flipped_board)
         self.current_player = 1
         self.winner = None
@@ -984,7 +992,7 @@ class ConnectFour:
         self.hover_column = -1
         self.anim_piece = None
         self.ai_timer = 0
-        
+
         if self.game_mode is None:
             self.phase = PHASE_MENU
         else:
@@ -1007,7 +1015,7 @@ class ConnectFour:
                     self.go_to_menu()
                 elif event.key == pygame.K_r and self.phase == PHASE_GAME_OVER:
                     self.restart_game()
-            
+
             elif event.type == pygame.MOUSEMOTION:
                 if self.phase == PHASE_MENU:
                     for b in self.buttons:
@@ -1017,7 +1025,7 @@ class ConnectFour:
                         self.hover_column = self.get_column_from_pos(event.pos)
                     else:
                         self.hover_column = -1
-            
+
             elif event.type == pygame.MOUSEBUTTONDOWN:
                 if self.phase == PHASE_MENU:
                     for i, b in enumerate(self.buttons):
@@ -1037,7 +1045,7 @@ class ConnectFour:
                         if col != -1:
                             # Try to start move
                             self.start_move_animation(col, self.current_player)
-                            
+
         return True
 
     def run(self):
@@ -1046,12 +1054,12 @@ class ConnectFour:
         while running:
             running = self.handle_events()
             self.update()
-            
+
             if self.phase == PHASE_MENU:
                 self.draw_menu()
             else:
                 self.draw_board()
-                
+
             pygame.display.flip()
             self.clock.tick(FPS)
         pygame.quit()
